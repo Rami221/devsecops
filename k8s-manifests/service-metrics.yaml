@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-metrics
+  labels:
+    app: service-metrics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-metrics
+  template:
+    metadata:
+      labels:
+        app: service-metrics
+    spec:
+      containers:
+      - name: metrics
+        image: service-metrics:v3
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-metrics
+spec:
+  selector:
+    app: service-metrics
+  ports:
+  - port: 80
+    targetPort: 8000
+  type: ClusterIP

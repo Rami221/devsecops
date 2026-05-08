@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: security-brain
+  namespace: default
+  labels:
+    app: security-brain
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: security-brain
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        app: security-brain
+    spec:
+      containers:
+      - name: security-brain
+        image: security-brain:v92
+        imagePullPolicy: IfNotPresent
+
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+              - NET_ADMIN
+
+        env:
+        - name: ES_HOST
+          value: https://elasticsearch-master:9200
+        - name: ES_USER
+          value: elastic
+        - name: ES_PASS
+          value: 3SeX68AoBPxGnGQd
+
+        volumeMounts:
+        - mountPath: /var/log/attacks
+          name: attack-logs
+
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+
+      volumes:
+      - name: attack-logs
+        hostPath:
+          path: /var/log/attacks
+          type: DirectoryOrCreate
+
+      restartPolicy: Always
+      dnsPolicy: ClusterFirst
+      terminationGracePeriodSeconds: 30

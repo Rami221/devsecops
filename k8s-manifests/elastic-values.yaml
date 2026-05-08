@@ -1,0 +1,19 @@
+replicas: 1
+resources:
+  requests:
+    memory: 512Mi
+    cpu: 500m
+persistence:
+  enabled: false
+service:
+  type: ClusterIP
+esJavaOpts: "-Xms512m -Xmx512m"
+antiAffinity: "soft"
+xpack:
+  security:
+    enabled: false
+    transport:
+      ssl:
+        enabled: false
+  monitoring:
+    enabled: false

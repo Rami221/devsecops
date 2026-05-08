@@ -1,0 +1,19 @@
+daemonset:
+  enabled: true
+config:
+  filebeat.inputs:
+  - type: container
+    paths:
+      - /var/log/containers/*.log
+    processors:
+      - add_kubernetes_metadata:
+          host: ${NODE_NAME}
+          matchers:
+          - logs_path:
+              logs_path: "/var/log/containers/"
+  output.elasticsearch:
+    hosts: ["https://elasticsearch-master:9200"]
+    protocol: "https"
+    username: "elastic"
+    password: "3SeX68AoBPxGnGQd"
+    ssl.verification_mode: "none"

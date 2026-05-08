@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Profil - Service A{% endblock %}
+
+{% block content %}
+<h1>Mon Profil</h1>
+<div id="profile-info">
+    <p>Chargement...</p>
+</div>
+
+<script>
+async function loadProfile() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/login';
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/users/me', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (response.ok) {
+            const user = await response.json();
+            document.getElementById('profile-info').innerHTML = `
+                <p><strong>ID :</strong> ${user.id}</p>
+                <p><strong>Nom d'utilisateur :</strong> ${user.username}</p>
+                <p><strong>Email :</strong> ${user.email}</p>
+                <p><strong>Date d'inscription :</strong> ${new Date(user.created_at).toLocaleString()}</p>
+            `;
+        } else if (response.status === 401) {
+            // Token invalide ou expiré
+            localStorage.removeItem('token');
+            window.location.href = '/login';
+        } else {
+            document.getElementById('profile-info').innerHTML = '<p>Erreur lors du chargement du profil.</p>';
+        }
+    } catch (error) {
+        document.getElementById('profile-info').innerHTML = '<p>Erreur réseau.</p>';
+    }
+}
+
+loadProfile();
+</script>
+{% endblock %}

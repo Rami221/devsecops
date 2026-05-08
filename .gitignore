@@ -1,0 +1,19 @@
+# Virtual environment
+venv/
+__pycache__/
+*.pyc
+
+# Logs and data files
+*.log
+*.txt
+*.csv
+*.pkl
+*.db
+
+# Large binaries
+*.so
+*.dll
+*.dylib
+
+# Docker images info
+images.txt
