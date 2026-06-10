@@ -23,9 +23,16 @@ CONFIDENCE_THRESHOLD = 0.7
 # Metrics thresholds
 CPU_THRESHOLD = 80
 CONNECTION_THRESHOLD = 200
-NETWORK_THRESHOLD = 5_000_000  # bytes/sec
+NETWORK_THRESHOLD = 10_000_000   # 10 MB/s (débit, pas cumul)
 
 METRICS_URL = "http://service-metrics/metrics"
+
+# Pour le calcul du débit réseau
+previous_metrics = {
+    "bytes_sent": 0,
+    "bytes_recv": 0,
+    "timestamp": None
+}
 
 # -------------------- Elasticsearch --------------------
 if ES_USER and ES_PASS:
@@ -163,41 +170,60 @@ def block_ip(ip):
     else:
         print(f"[ERROR] Failed to block {ip}", flush=True)
 
-# -------------------- Metrics analysis (NEW) --------------------
-processed_metrics_logs = deque(maxlen=1000)  # optional, to avoid duplicates
-
+# -------------------- Metrics analysis (with rate calculation) --------------------
 def analyze_metrics():
+    global previous_metrics
     try:
-        resp = requests.get(METRICS_URL, timeout=10)  # increased timeout
-        metrics = resp.json()  # direct JSON, no 'data' wrapper
+        resp = requests.get(METRICS_URL, timeout=10)
+        metrics = resp.json()
     except Exception as e:
         print(f"Metrics fetch error: {e}", flush=True)
         return
 
+    now = time.time()
     score = 0
     alerts = []
 
+    # --- Calcul des débits (bytes per second) ---
+    bytes_sent_now = metrics.get('bytes_sent', 0)
+    bytes_recv_now = metrics.get('bytes_recv', 0)
+
+    if previous_metrics["timestamp"] is not None:
+        delta_time = now - previous_metrics["timestamp"]
+        if delta_time > 0:
+            sent_rate = (bytes_sent_now - previous_metrics["bytes_sent"]) / delta_time
+            recv_rate = (bytes_recv_now - previous_metrics["bytes_recv"]) / delta_time
+        else:
+            sent_rate = 0
+            recv_rate = 0
+    else:
+        sent_rate = 0
+        recv_rate = 0
+
+    # Mise à jour des valeurs pour la prochaine itération
+    previous_metrics["bytes_sent"] = bytes_sent_now
+    previous_metrics["bytes_recv"] = bytes_recv_now
+    previous_metrics["timestamp"] = now
+
+    # --- Analyse CPU ---
     cpu = metrics.get('cpu_percent', 0)
     if cpu > CPU_THRESHOLD:
         alerts.append(f"High CPU usage: {cpu}%")
         score += 35
 
-    # The metrics service returns 'total' for active connections
+    # --- Connexions actives ---
     total_conn = metrics.get('total', 0)
     if total_conn > CONNECTION_THRESHOLD:
         alerts.append(f"Too many active connections: {total_conn}")
         score += 35
 
-    # Use absolute bytes (you can later compute per‑second rates if needed)
-    bytes_recv = metrics.get('bytes_recv', 0)
-    if bytes_recv > NETWORK_THRESHOLD:
-        alerts.append(f"High incoming traffic: {bytes_recv} bytes")
-        score += 30
-
-    bytes_sent = metrics.get('bytes_sent', 0)
-    if bytes_sent > NETWORK_THRESHOLD:
-        alerts.append(f"High outgoing traffic: {bytes_sent} bytes")
-        score = min(score + 20, 100)
+    # --- Utilisation des débits (taux) plutôt que des cumuls ---
+    if sent_rate > NETWORK_THRESHOLD:
+        alerts.append(f"High outgoing traffic: {sent_rate:.0f} B/s")
+        score = min(score + 30, 100)
+    if recv_rate > NETWORK_THRESHOLD:
+        alerts.append(f"High incoming traffic: {recv_rate:.0f} B/s")
+        score = min(score + 30, 100)
 
     if alerts:
         probability = min(score, 100)
@@ -205,14 +231,22 @@ def analyze_metrics():
             "type": "metrics_anomaly",
             "probability": probability,
             "alerts": alerts,
-            "metrics": metrics,
+            "metrics": {
+                "cpu_percent": cpu,
+                "active_connections": total_conn,
+                "outgoing_rate_Bps": sent_rate,
+                "incoming_rate_Bps": recv_rate
+            },
             "timestamp": datetime.utcnow().isoformat() + "Z"
         }
         print(json.dumps(alert_msg), flush=True)
         if probability >= 50:
             send_slack_alert(alert_msg)
     else:
-        print(f"Metrics normal: CPU={cpu}% | Conn={total_conn} | NetIn={bytes_recv} B", flush=True)
+        # Affichage normal (optionnel, commenté pour réduire les logs)
+        # print(f"Metrics normal: CPU={cpu}% | Conn={total_conn} | Out={sent_rate:.0f} B/s | In={recv_rate:.0f} B/s", flush=True)
+        pass
+
 def metrics_loop():
     while True:
         analyze_metrics()
